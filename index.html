@@ -11,8 +11,6 @@
         if (typeof msal === 'undefined') document.write(unescape("%3Cscript src='https://alcdn.msftauth.net/browser/2.32.0/js/msal-browser.min.js' type='text/javascript' %3E%3C/script%3E"));
     </script>
 
-    <!-- This styling is for the canvas demonstration purposes. It is recommended 
-    that style is moved to separate file for organization in larger projects -->
     <style>
         html,
         body {
@@ -63,7 +61,6 @@
             display: none;
         }
     </style>
-
 </head>
 
 <body>
@@ -73,182 +70,130 @@
         </div>
         <div id="subheader">
             <span id="loginStatus">You are not logged in on the website.</span>
-            <a id="login" href="#" onclick="onSignInClick()">Log in</a>
-            <a id="logout" href="#" onclick="onSignOutClick()">Log out</a>
+            <a id="login" href="#" onclick="onSignInClick(); return false;">Log in</a>
+            <a id="logout" href="#" onclick="onSignOutClick(); return false;">Log out</a>
         </div>
 
-        <div id="webchat"> </div>
+        <div id="webchat"></div>
     </div>
 
     <script>
- // TODO Change parameters below to your client id, tenant id and token endpoint.
-    const clientId = "f42176f2-a53c-4cc2-8289-d3436f529865";
-    const tenantId = "4ab533c3-7284-424a-8124-27c7420a3d90";
-    const redirectUri = "https://asutare95.github.io/SSO/";
-    const tokenEndpoint = "https://3a10aa35e0c8ea24a1effac43d05bf.89.environment.api.powerplatform.com/powervirtualagents/botsbyschema/copilots_header_cr70c_agent1pTQ8VU/directline/token?api-version=2022-03-01-preview";
+        const clientId = "f42176f2-a53c-4cc2-8289-d3436f529865";
+        const tenantId = "4ab533c3-7284-424a-8124-27c7420a3d90";
+        const redirectUri = "https://asutare95.github.io/SSO/";
+        const tokenEndpoint = "https://3a10aa35e0c8ea24a1effac43d05bf.89.environment.api.powerplatform.com/powervirtualagents/botsbyschema/copilots_header_cr70c_agent1pTQ8VU/directline/token?api-version=2022-03-01-preview";
 
-    const msalConfig = {
-        auth: {
-            clientId: clientId,
-            authority: "https://login.microsoftonline.com/" + tenantId,
-            redirectUri: redirectUri
-        },
-        cache: {
-            cacheLocation: "sessionStorage",
-            storeAuthStateInCookie: false
-        }
-    };
-
-    const loginRequest = {
-        scopes: ["User.Read", "openid", "profile"]
-    };
-
-    const msalInstance = new msal.PublicClientApplication(msalConfig);
-
-    let user = null;
-
-    function updateLoginUI(account) {
-        if (account) {
-            user = account;
-            msalInstance.setActiveAccount(account);
-
-            document.getElementById("loginStatus").innerHTML =
-                "Currently logged in as " + (account.name || account.username) + " on the website.";
-
-            document.getElementById("login").style.display = "none";
-            document.getElementById("logout").style.display = "inline";
-        } else {
-            user = null;
-
-            document.getElementById("loginStatus").innerHTML =
-                "You are not logged in on the website.";
-
-            document.getElementById("login").style.display = "inline";
-            document.getElementById("logout").style.display = "none";
-        }
-    }
-
-    async function onSignInClick() {
-        try {
-            const loginResponse = await msalInstance.loginPopup(loginRequest);
-            const account = loginResponse.account || msalInstance.getAllAccounts()[0];
-            updateLoginUI(account);
-            await renderChatWidget();
-        } catch (err) {
-            console.log("Interactive login failed:", err);
-        }
-    }
-
-    async function onSignOutClick() {
-        try {
-            await msalInstance.logoutPopup({
-                account: user
-            });
-        } catch (err) {
-            console.log("Logout failed:", err);
-        }
-
-        location.reload();
-    }
-
-    async function tryAutoLogin() {
-        // 1. 이미 MSAL 캐시에 계정이 있으면 바로 사용
-        const accounts = msalInstance.getAllAccounts();
-        if (accounts.length > 0) {
-            updateLoginUI(accounts[0]);
-            return true;
-        }
-
-        // 2. Silent SSO 시도
-        try {
-            const silentRequest = {
-                ...loginRequest,
+        const msalConfig = {
+            auth: {
+                clientId: clientId,
+                authority: "https://login.microsoftonline.com/" + tenantId,
                 redirectUri: redirectUri
-            };
-
-            const silentResponse = await msalInstance.ssoSilent(silentRequest);
-            const account = silentResponse.account || msalInstance.getAllAccounts()[0];
-
-            if (account) {
-                updateLoginUI(account);
-                return true;
+            },
+            cache: {
+                cacheLocation: "sessionStorage",
+                storeAuthStateInCookie: false
             }
-        } catch (err) {
-            console.log("Silent SSO failed:", err);
+        };
+
+        const loginRequest = {
+            scopes: ["User.Read", "openid", "profile"]
+        };
+
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
+        let user = null;
+        let webChatRendered = false;
+
+        function updateLoginUI(account) {
+            if (account) {
+                user = account;
+                msalInstance.setActiveAccount(account);
+                document.getElementById("loginStatus").innerHTML =
+                    "Currently logged in as " + (account.name || account.username) + " on the website.";
+                document.getElementById("login").style.display = "none";
+                document.getElementById("logout").style.display = "inline";
+            } else {
+                user = null;
+                document.getElementById("loginStatus").innerHTML = "You are not logged in on the website.";
+                document.getElementById("login").style.display = "inline";
+                document.getElementById("logout").style.display = "none";
+            }
         }
 
-        // 3. Silent 실패 시 자동 Popup 로그인
-        try {
-            const loginResponse = await msalInstance.loginPopup(loginRequest);
-            const account = loginResponse.account || msalInstance.getAllAccounts()[0];
-
-            if (account) {
+        async function onSignInClick() {
+            try {
+                const loginResponse = await msalInstance.loginPopup(loginRequest);
+                const account = loginResponse.account || msalInstance.getAllAccounts()[0];
                 updateLoginUI(account);
-                return true;
+                await renderChatWidget();
+            } catch (err) {
+                console.log("Interactive login failed:", err);
             }
-        } catch (err) {
-            console.log("Fallback popup login failed:", err);
         }
 
-        updateLoginUI(null);
-        return false;
-    }
-
-        // Handle sign out request and refresh page
         async function onSignOutClick() {
-            result = await msalInstance.logoutPopup({
-                account: user,
-            })
+            try {
+                await msalInstance.logoutPopup({ account: user });
+            } catch (err) {
+                console.log("Logout failed:", err);
+            }
             location.reload();
         }
 
-    </script>
+        async function tryAutoLogin() {
+            const accounts = msalInstance.getAllAccounts();
+            if (accounts.length > 0) {
+                updateLoginUI(accounts[0]);
+                return true;
+            }
 
-    <script>
-        /**
-         * Retrieve tokenExchangeResource from OAuth card provided by the bot 
-         * This tokenExchangeResource will later be used to request an accessToken with the right scope.
-         */
+            try {
+                const silentResponse = await msalInstance.ssoSilent({
+                    ...loginRequest,
+                    redirectUri: redirectUri
+                });
+                const account = silentResponse.account || msalInstance.getAllAccounts()[0];
+                if (account) {
+                    updateLoginUI(account);
+                    return true;
+                }
+            } catch (err) {
+                console.log("Silent SSO failed:", err);
+            }
+
+            updateLoginUI(null);
+            return false;
+        }
+
         function getOAuthCardResourceUri(activity) {
             if (activity &&
                 activity.attachments &&
                 activity.attachments[0] &&
                 activity.attachments[0].contentType === 'application/vnd.microsoft.card.oauth' &&
                 activity.attachments[0].content.tokenExchangeResource) {
-
-                // asking for token exchange with AAD
                 return activity.attachments[0].content.tokenExchangeResource.uri;
             }
         }
 
-        /**
-         * Retrieve a new access token from the user for the PVA scope based on the tokenExchangeResource
-         */
         async function exchangeTokenAsync(resourceUri) {
-            let user = msalInstance.getAllAccounts();
-
-            if (user.length <= 0) {
-                return null
+            const accounts = msalInstance.getAllAccounts();
+            if (accounts.length <= 0) {
+                return null;
             }
 
             const tokenRequest = {
-                scopes: [resourceUri]
+                scopes: [resourceUri],
+                account: msalInstance.getActiveAccount() || accounts[0]
             };
 
             try {
-                const tokenResponse = await msalInstance.acquireTokenSilent(tokenRequest)
+                const tokenResponse = await msalInstance.acquireTokenSilent(tokenRequest);
                 return tokenResponse.accessToken;
             } catch (err) {
-                console.log(err)
-                return null
+                console.log(err);
+                return null;
             }
-
-            return null
         }
 
-        /**
-         * Helper function to fetch a JSON API
-         */
         async function fetchJSON(url, options = {}) {
             const res = await fetch(url, {
                 ...options,
@@ -263,15 +208,16 @@
             }
 
             return await res.json();
-        } 
-    </script>
+        }
 
-    <script>
         async function renderChatWidget() {
+            if (webChatRendered) {
+                return;
+            }
 
-            var userID = user?.localAccountId != null ?
-                (user.localAccountId).substr(0, 36) :
-                (Math.random().toString() + Date.now().toString()).substr(0, 64);
+            const userID = user?.localAccountId != null
+                ? user.localAccountId.substr(0, 36)
+                : (Math.random().toString() + Date.now().toString()).substr(0, 64);
 
             const { token } = await fetchJSON(tokenEndpoint);
             const directLine = window.WebChat.createDirectLine({ token });
@@ -279,37 +225,25 @@
             const store = WebChat.createStore(
                 {},
                 ({ dispatch }) => next => action => {
-                    const { type } = action;
-
-                    // Configure your bot to start the conversation automatically
-                    // See https://learn.microsoft.com/en-us/microsoft-copilot-studio/configure-bot-greeting?tabs=web
                     if (action.type === "DIRECT_LINE/CONNECT_FULFILLED") {
                         dispatch({
-                            meta: {
-                                method: "keyboard",
-                            },
+                            meta: { method: "keyboard" },
                             payload: {
                                 activity: {
-                                    channelData: {
-                                        postBack: true,
-                                    },
-                                    // Web Chat will show the 'Greeting' System Topic message which has a trigger-phrase 'hello'
+                                    channelData: { postBack: true },
                                     name: 'startConversation',
                                     type: "event"
-                                },
+                                }
                             },
-                            type: "DIRECT_LINE/POST_ACTIVITY",
+                            type: "DIRECT_LINE/POST_ACTIVITY"
                         });
                     }
 
-                    // Filter incoming activities from Direct Line to intercept the Login Card
-                    // If we are logged in and have a valid auth token, we will directly pass this in the background to the bot.
                     if (action.type === 'DIRECT_LINE/INCOMING_ACTIVITY') {
                         const activity = action.payload.activity;
                         let resourceUri;
 
                         if (activity.from && activity.from.role === 'bot' && (resourceUri = getOAuthCardResourceUri(activity))) {
-
                             exchangeTokenAsync(resourceUri).then((token) => {
                                 if (token) {
                                     directLine.postActivity({
@@ -320,42 +254,36 @@
                                             connectionName: activity.attachments[0].content.connectionName,
                                             token
                                         },
-                                        "from": {
+                                        from: {
                                             id: userID,
-                                            name: user.name,
-                                            role: "user"
+                                            name: user?.name || user?.username || 'User',
+                                            role: 'user'
                                         }
                                     }).subscribe(
                                         id => {
                                             if (id === 'retry') {
-                                                // Bot was not able to handle the invoke, so display the oauthCard
                                                 return next(action);
                                             }
-                                            // Tokenexchange successful and we do not display the oauthCard
                                         },
                                         error => {
-                                            // An error occurred to display the oauthCard
+                                            console.log('Token exchange invoke failed:', error);
                                             return next(action);
                                         }
                                     );
                                     return;
                                 }
-                                else {
-                                    return next(action);
-                                }
+
+                                return next(action);
                             });
-                        }
-                        else {
-                            return next(action);
+                            return;
                         }
                     }
-                    else {
-                        return next(action);
-                    }
-                });
+
+                    return next(action);
+                }
+            );
 
             const styleOptions = {
-                // Add styleOptions to customize Web Chat canvas
                 hideUploadButton: true,
                 botAvatarImage: 'https://bot-framework.azureedge.net/bot-icons-v1/6ab9b101-b65c-4357-9e9f-915cbf313a14_2K5Bt02aW8egEb97fxAgh7vqChK4UV3Nh3Lw3YYArhEKR8mB.png',
                 botAvatarInitials: 'Bot',
@@ -365,24 +293,24 @@
 
             window.WebChat.renderWebChat(
                 {
-                    directLine: directLine,
+                    directLine,
                     store,
-                    userID: userID,
+                    userID,
                     styleOptions
                 },
                 document.getElementById('webchat')
             );
+
+            webChatRendered = true;
         }
 
-        // Render the WebChat when the page loads
-    (async () => {
-        const loggedIn = await tryAutoLogin();
-        await renderChatWidget();
-
-        // 로그인 성공 여부 로그 확인용
-        console.log("Auto login result:", loggedIn);
-    })();
-
+        (async () => {
+            const loggedIn = await tryAutoLogin();
+            if (loggedIn) {
+                await renderChatWidget();
+            }
+            console.log('Auto login result:', loggedIn);
+        })();
     </script>
 </body>
 
