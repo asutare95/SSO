@@ -1,87 +1,60 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 
 <head>
-    <title>Contoso Sample Web Chat</title>
+	<meta charset="UTF-8">
+    <title>Pantos Chatbot SSO</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
 
     <script src="https://cdn.botframework.com/botframework-webchat/latest/webchat.js"></script>
     <script type="text/javascript" src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
-    <script type="text/javascript">
-        if (typeof msal === 'undefined') document.write(unescape("%3Cscript src='https://alcdn.msftauth.net/browser/2.32.0/js/msal-browser.min.js' type='text/javascript' %3E%3C/script%3E"));
-    </script>
 
     <style>
-        html,
-        body {
-            height: 100%;
-        }
-
-        body {
-            margin: 0;
-            font-family: "Segoe UI", "Segoe UI Web (West European)", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        #header {
-            background-color: rgb(11, 85, 106);
-            color: rgb(255, 255, 255);
-            font-weight: 600;
-            height: 48px;
-            padding: 0px 13px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        #subheader {
-            background-color: rgb(243, 242, 241);
-            padding: 7px 13px;
-            font-size: 12px;
-            font-weight: 400;
-        }
-
-        a {
-            color: rgb(0, 90, 158);
-        }
-
-        a:hover {
-            color: rgb(0, 69, 120);
-        }
-
-        #webchat {
-            position: fixed;
-            height: calc(100% - 75px);
-            width: 100%;
-            top: 75px;
-            overflow: hidden;
-        }
-
-        #logout {
-            display: none;
-        }
+        html, body { height: 100%; margin: 0; overflow: hidden; }
+        body { font-family: "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+        #subheader { background-color: #f3f2f1; padding: 7px 13px; font-size: 12px; font-weight: 400; border-bottom: 1px solid #e6e6e6; }
+        #webchat { height: calc(100% - 35px); width: 100%; font-size: 13px;}
+        #login, #logout { display: none; margin-left: 10px; font-weight: bold; text-decoration: none; color: #005a9e; }
+        #loginStatus { color: #666; }
+        .error-msg { color: #d13735 !important; font-weight: bold; }
+        
+        #auth-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #ffffff; z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        .pantos-btn { padding: 12px 24px; background-color: #a72b2a; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 15px; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: background-color 0.2s; }
+        .pantos-btn:hover { background-color: #8c2120; }
+        .webchat__link-definitions { display: none }
+        #webchat .webchat__suggested-actions__carousel .webchat__suggested-actions__item-box button { height: 35px !important; padding-left: 16px !important; padding-right: 16px !important; }
+        .webchat__text-content__markdown em { font-size: 12px; color: #767676; }
     </style>
 </head>
 
 <body>
-    <div id="chatwindow">
-        <div id="header">
-            SSO Test Bot
+    <div id="auth-overlay">
+        <h3 id="overlay-msg" style="color: #333; margin-bottom: 5px;">Pantos 챗봇 서비스</h3>
+        <p style="color: #666; font-size: 13px;">안전한 접근을 위해 SSO 로그인이 필요합니다.</p>
+    </div>
+
+    <div id="chatwindow" style="height: 100%; position: relative;">
+        <!-- 챗봇 로딩 및 추가 인증 표시용 오버레이 -->
+        <div id="bot-auth-overlay" style="position: absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.85); z-index:900; display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
+            <h3 id="bot-auth-msg" style="color: #005a9e; margin-bottom:10px;">챗봇 보안 인증 중...</h3>
+            <p style="color:#666; font-size:13px; line-height:1.5;">서버 상태에 따라 연결이 다소 지연될 수 있습니다.</p>
         </div>
         <div id="subheader">
-            <span id="loginStatus">You are not logged in on the website.</span>
-            <a id="login" href="#" onclick="onSignInClick(); return false;">Log in</a>
-            <a id="logout" href="#" onclick="onSignOutClick(); return false;">Log out</a>
+            <span id="loginStatus">초기화 중...</span>
+            <a id="login" href="#" onclick="onSignInClick(); return false;">로그인 시도</a>
+            <a id="logout" href="#" onclick="onSignOutClick(); return false;">로그아웃</a>
         </div>
-
-        <div id="webchat"></div>
+        <div id="webchat" style="fon"></div>
     </div>
 
     <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const loginHint = urlParams.get('login_hint');
+
         const clientId = "f42176f2-a53c-4cc2-8289-d3436f529865";
         const tenantId = "4ab533c3-7284-424a-8124-27c7420a3d90";
-        const redirectUri = "https://asutare95.github.io/SSO/";
-        const tokenEndpoint = "https://3a10aa35e0c8ea24a1effac43d05bf.89.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr70c_agent1_DvOekJ/directline/token?api-version=2022-03-01-preview";
+        const redirectUri = https://asutare95.github.io/SSO/;
+        const tokenEndpoint = "https://3a10aa35e0c8ea24a1effac43d05bf.89.environment.api.powerplatform.com/powervirtualagents/botsbyschema/copilots_header_cr70c_agent1XWP7rD/directline/token?api-version=2022-03-01-preview";
 
         const msalConfig = {
             auth: {
@@ -90,228 +63,299 @@
                 redirectUri: redirectUri
             },
             cache: {
-                cacheLocation: "sessionStorage",
-                storeAuthStateInCookie: false
+                cacheLocation: "localStorage",
+                storeAuthStateInCookie: true // iframe 내 SSO를 위해 true 권장
             }
         };
 
         const loginRequest = {
-            scopes: ["User.Read", "openid", "profile"]
+            scopes: ["User.Read", "openid", "profile"],
+            loginHint: loginHint
         };
 
         const msalInstance = new msal.PublicClientApplication(msalConfig);
         let user = null;
         let webChatRendered = false;
 
-        function updateLoginUI(account) {
+        function updateLoginStatus(msg, isError = false) {
+            const statusEl = document.getElementById("loginStatus");
+            statusEl.innerHTML = msg;
+            if (isError) statusEl.classList.add("error-msg");
+            else statusEl.classList.remove("error-msg");
+        }
+
+        function updateUI(account) {
+            const overlay = document.getElementById("auth-overlay");
             if (account) {
                 user = account;
                 msalInstance.setActiveAccount(account);
-                document.getElementById("loginStatus").innerHTML =
-                    "Currently logged in as " + (account.name || account.username) + " on the website.";
+                updateLoginStatus("로그인됨: " + (account.name || account.username));
                 document.getElementById("login").style.display = "none";
-                document.getElementById("logout").style.display = "inline";
+                document.getElementById("logout").style.display = "none";
+                if(overlay) overlay.style.display = "none";
             } else {
                 user = null;
-                document.getElementById("loginStatus").innerHTML = "You are not logged in on the website.";
-                document.getElementById("login").style.display = "inline";
+                updateLoginStatus("자동 로그인 실패. 로그인이 필요합니다.", true);
+                document.getElementById("login").style.display = "none";
                 document.getElementById("logout").style.display = "none";
+                
+                // 로그인 필요 시 오버레이 노출
+                if(overlay) {
+                    overlay.style.display = "flex";
+                    document.getElementById("overlay-btn").style.display = "inline-block";
+                }
             }
         }
 
         async function onSignInClick() {
             try {
+                updateLoginStatus("인증 팝업 대기 중...");
+                const btn = document.getElementById("overlay-btn");
+                if (btn) btn.style.display = "none"; // 클릭 후 중복클릭 방지용 숨김
+                
                 const loginResponse = await msalInstance.loginPopup(loginRequest);
-                const account = loginResponse.account || msalInstance.getAllAccounts()[0];
-                updateLoginUI(account);
+                updateUI(loginResponse.account);
                 await renderChatWidget();
             } catch (err) {
-                console.log("Interactive login failed:", err);
+                console.error("Popup login failed:", err);
+                updateLoginStatus("로그인 실패: " + err.message, true);
+                const btn = document.getElementById("overlay-btn");
+                if (btn) btn.style.display = "inline-block";
             }
         }
 
         async function onSignOutClick() {
-            try {
-                await msalInstance.logoutPopup({ account: user });
-            } catch (err) {
-                console.log("Logout failed:", err);
+            localStorage.removeItem("PantosChatbot_LoggedIn_" + (loginHint || ""));
+            // 슬라이드 레이어 닫기 신호 전송
+            if (window.parent) {
+                window.parent.postMessage({ type: "CHATBOT_LOGOUT_SUCCESS" }, "*");
             }
-            location.reload();
+            await msalInstance.logoutPopup({ account: user });
         }
 
         async function tryAutoLogin() {
+            // 1. MSAL 캐시 안에 일치하는 계정이 있는지 확인 (다른 계정이면 무시)
             const accounts = msalInstance.getAllAccounts();
+            let targetAccount = null;
+
             if (accounts.length > 0) {
-                updateLoginUI(accounts[0]);
+                if (loginHint) {
+                    targetAccount = accounts.find(acc => acc.username.toLowerCase() === loginHint.toLowerCase());
+                } else {
+                    targetAccount = accounts[0]; // loginHint가 없을 때에만 0번 인덱스 사용
+                }
+            }
+
+            if (targetAccount) {
+                updateUI(targetAccount);
                 return true;
             }
 
+            // 2. Silent SSO 시도
             try {
-                const silentResponse = await msalInstance.ssoSilent({
-                    ...loginRequest,
-                    redirectUri: redirectUri
-                });
-                const account = silentResponse.account || msalInstance.getAllAccounts()[0];
-                if (account) {
-                    updateLoginUI(account);
-                    return true;
+                updateLoginStatus("자동 로그인 시도 중 (SSO)...");
+                const silentResponse = await msalInstance.ssoSilent(loginRequest);
+                
+                // 불일치 사용자 차단
+                if (loginHint && silentResponse.account.username.toLowerCase() !== loginHint.toLowerCase()) {
+                    throw new Error("Mismatch Account in ssoSilent");
                 }
+                
+                updateUI(silentResponse.account);
+                return true;
             } catch (err) {
-                console.log("Silent SSO failed:", err);
-            }
-
-            updateLoginUI(null);
-            return false;
-        }
-
-        function getOAuthCardResourceUri(activity) {
-            if (activity &&
-                activity.attachments &&
-                activity.attachments[0] &&
-                activity.attachments[0].contentType === 'application/vnd.microsoft.card.oauth' &&
-                activity.attachments[0].content.tokenExchangeResource) {
-                return activity.attachments[0].content.tokenExchangeResource.uri;
+                console.warn("Silent SSO failed:", err);
+                // 브라우저 정책 등으로 실패한 경우 팝업 로그인을 유도하거나 자동으로 띄워야 함
+                // 하지만 브라우저는 사용자 액션 없이 팝업을 띄우면 차단함.
+                updateUI(null);
+                return false;
             }
         }
 
-        async function exchangeTokenAsync(resourceUri) {
-            const accounts = msalInstance.getAllAccounts();
-            if (accounts.length <= 0) {
-                return null;
-            }
-
-            const tokenRequest = {
-                scopes: [resourceUri],
-                account: msalInstance.getActiveAccount() || accounts[0]
-            };
-
-            try {
-                const tokenResponse = await msalInstance.acquireTokenSilent(tokenRequest);
-                return tokenResponse.accessToken;
-            } catch (err) {
-                console.log(err);
-                return null;
-            }
-        }
-
-        async function fetchJSON(url, options = {}) {
-            const res = await fetch(url, {
-                ...options,
-                headers: {
-                    ...options.headers,
-                    accept: 'application/json'
-                }
-            });
-
-            if (!res.ok) {
-                throw new Error(`Failed to fetch JSON due to ${res.status}`);
-            }
-
-            return await res.json();
-        }
-
+        // PVA 토큰 교환 로직 (기존 유지)
         async function renderChatWidget() {
-            if (webChatRendered) {
-                return;
-            }
+            if (webChatRendered) return;
+            try {
+                document.getElementById("bot-auth-overlay").style.display = "flex";
+                updateLoginStatus("챗봇 연결 중...");
+		const userID = user?.homeAccountId
+  		? ("dl_" + user.homeAccountId).substring(0, 64)
+		: ("dl_" + crypto.randomUUID().replace(/-/g, "")).substring(0, 64);
+                const { token } = await fetch(tokenEndpoint).then(r => r.json());
+                const directLine = window.WebChat.createDirectLine({ token });
 
-            const userID = user?.localAccountId != null
-                ? user.localAccountId.substr(0, 36)
-                : (Math.random().toString() + Date.now().toString()).substr(0, 64);
-
-            const { token } = await fetchJSON(tokenEndpoint);
-            const directLine = window.WebChat.createDirectLine({ token });
-
-            const store = WebChat.createStore(
-                {},
-                ({ dispatch }) => next => action => {
+                // ... (이하 Store 로직 생략하지 않고 전체 포함)
+                const store = WebChat.createStore({}, ({ dispatch }) => next => action => {
                     if (action.type === "DIRECT_LINE/CONNECT_FULFILLED") {
-                        dispatch({
-                            meta: { method: "keyboard" },
-                            payload: {
-                                activity: {
-                                    channelData: { postBack: true },
-                                    name: 'startConversation',
-                                    type: "event"
-                                }
-                            },
-                            type: "DIRECT_LINE/POST_ACTIVITY"
-                        });
-                    }
-
+			dispatch({
+			type: "DIRECT_LINE/POST_ACTIVITY",
+        		meta: { method: "keyboard" },
+        		payload: {
+     		      activity: {
+ 		               type: "event",
+  		              name: "startConversation",
+   		             channelData: {
+ 		                   postBack: true,
+ 		                   userPrincipalName: user?.username || "",
+ 		                   displayName: user?.name || "",
+   		                 homeAccountId: user?.homeAccountId || ""
+  		              },
+		                from: {
+		                    id: userID,
+		                    name: user?.username || user?.name || "Unknown User",
+  		                  role: "user"
+ 		               }
+		            }
+ 		       }
+		    });
+}
                     if (action.type === 'DIRECT_LINE/INCOMING_ACTIVITY') {
                         const activity = action.payload.activity;
-                        let resourceUri;
+                        
+                        // 봇이 일반 메시지를 보내면 인증이 완전히 끝난 것으로 간주하고 로딩 해제
+                        if (activity.from?.role === 'bot' && activity.type === 'message') {
+                            document.getElementById("bot-auth-overlay").style.display = "none";
+                        }
 
-                        if (activity.from && activity.from.role === 'bot' && (resourceUri = getOAuthCardResourceUri(activity))) {
-                            exchangeTokenAsync(resourceUri).then((token) => {
+                        if (activity.from?.role === 'bot' && getOAuthCardResourceUri(activity)) {
+                            document.getElementById("bot-auth-overlay").style.display = "flex";
+                            document.getElementById("bot-auth-msg").innerHTML = "챗봇 보안 인증 중...";
+
+                            exchangeTokenAsync(getOAuthCardResourceUri(activity)).then(token => {
                                 if (token) {
                                     directLine.postActivity({
-                                        type: 'invoke',
-                                        name: 'signin/tokenExchange',
-                                        value: {
-                                            id: activity.attachments[0].content.tokenExchangeResource.id,
-                                            connectionName: activity.attachments[0].content.connectionName,
-                                            token
-                                        },
-                                        from: {
-                                            id: userID,
-                                            name: user?.name || user?.username || 'User',
-                                            role: 'user'
-                                        }
+                                        type: 'invoke', name: 'signin/tokenExchange',
+                                        value: { id: activity.attachments[0].content.tokenExchangeResource.id, connectionName: activity.attachments[0].content.connectionName, token },
+                                        from: { id: userID, name: user?.name || user?.username || 'User', role: 'user' }
                                     }).subscribe(
-                                        id => {
+                                        id => { 
                                             if (id === 'retry') {
-                                                return next(action);
-                                            }
-                                        },
-                                        error => {
-                                            console.log('Token exchange invoke failed:', error);
-                                            return next(action);
+                                                document.getElementById("bot-auth-overlay").style.display = "none";
+                                                updateLoginStatus("수동 인증 (OTP 등) 필요");
+                                                return next(action); 
+                                            } 
+                                        }, 
+                                        err => { 
+                                            document.getElementById("bot-auth-overlay").style.display = "none";
+                                            console.error(err); 
+                                            return next(action); 
                                         }
                                     );
-                                    return;
+                                } else { 
+                                    document.getElementById("bot-auth-overlay").style.display = "none";
+                                    updateLoginStatus("수동 인증 (OTP 등) 필요");
+                                    return next(action); 
                                 }
-
-                                return next(action);
                             });
                             return;
                         }
                     }
-
                     return next(action);
-                }
-            );
+                });
 
-            const styleOptions = {
-                hideUploadButton: true,
-                botAvatarImage: 'https://bot-framework.azureedge.net/bot-icons-v1/6ab9b101-b65c-4357-9e9f-915cbf313a14_2K5Bt02aW8egEb97fxAgh7vqChK4UV3Nh3Lw3YYArhEKR8mB.png',
-                botAvatarInitials: 'Bot',
-                userAvatarImage: 'https://content.powerapps.com/resource/makerx/static/media/user.0d06c38a.svg',
-                userAvatarInitials: 'User'
-            };
-
-            window.WebChat.renderWebChat(
-                {
-                    directLine,
-                    store,
-                    userID,
-                    styleOptions
-                },
-                document.getElementById('webchat')
-            );
-
-            webChatRendered = true;
+                window.WebChat.renderWebChat(
+    {
+        directLine,
+        store,
+        userID,
+        username: user?.username || user?.name || "Unknown User",
+        styleOptions: { hideUploadButton: true }
+    },
+    document.getElementById('webchat')
+);
+                webChatRendered = true;
+                updateLoginStatus("연결 완료: " + (user?.name || user?.username));
+            } catch (err) {
+                document.getElementById("bot-auth-overlay").style.display = "none";
+                updateLoginStatus("챗봇 로드 에러: " + err.message, true);
+            }
         }
 
-        (async () => {
-            const loggedIn = await tryAutoLogin();
-            if (loggedIn) {
-                await renderChatWidget();
+        function getOAuthCardResourceUri(activity) {
+            return activity?.attachments?.[0]?.content?.tokenExchangeResource?.uri;
+        }
+
+        async function exchangeTokenAsync(resourceUri) {
+            try {
+                const tokenResponse = await msalInstance.acquireTokenSilent({ scopes: [resourceUri], account: msalInstance.getActiveAccount() });
+                return tokenResponse.accessToken;
+            } catch (err) {
+                console.error("Token exchange failed:", err);
+                return null;
             }
-            console.log('Auto login result:', loggedIn);
+        }
+
+        // 초기화 실행
+        (async () => {
+            try {
+                // Redirect 결과 파싱
+                const redirectRes = await msalInstance.handleRedirectPromise();
+                
+                const isAuthMode = urlParams.get('mode') === 'auth';
+
+                // 1. 팝업(mode=auth)으로 열렸을 때의 로그인/리다이렉트 처리 로직
+                if (isAuthMode) {
+                    if (redirectRes) {
+                        // 기존 세션 찌꺼기에 의해 엉뚱한 사용자로 리다이렉트되어 돌아왔을 경우 방어
+                        if (loginHint && redirectRes.account.username.toLowerCase() !== loginHint.toLowerCase()) {
+                            msalInstance.loginRedirect({ ...loginRequest, prompt: "select_account" });
+                            return;
+                        }
+
+                        // 완벽히 올바른 사용자로 리다이렉트가 끝나고 돌아온 상태
+                        localStorage.setItem("PantosChatbot_LoggedIn_" + loginHint, "true");
+                        if (window.opener) { 
+                            window.opener.postMessage({ type: "CHATBOT_AUTH_SUCCESS" }, "*"); 
+                            window.close(); 
+                        }
+                        return;
+                    }
+
+                    // 아직 리다이렉트 응답이 없다면 ssoSilent 아주 짧게 백그라운드 시도
+                    try {
+                        document.body.innerHTML = "<h3 style='text-align:center; margin-top:50px; font-weight:normal;'>인증을 진행 중입니다...</h3>";
+                        const ssoRes = await msalInstance.ssoSilent(loginRequest);
+                        
+                        // 백그라운드 시도 결과물이 다른 사용자라면 포기하고 정식 리다이렉션 수행
+                        if (loginHint && ssoRes.account.username.toLowerCase() !== loginHint.toLowerCase()) {
+                            throw new Error("Mismatch Account");
+                        }
+
+                        localStorage.setItem("PantosChatbot_LoggedIn_" + loginHint, "true");
+                        if (window.opener) { 
+                            window.opener.postMessage({ type: "CHATBOT_AUTH_SUCCESS" }, "*"); 
+                            window.close(); 
+                        }
+                    } catch (e) {
+                        // 이전 사용자의 마이크로소프트 서버 쿠키를 무시하고 명확히 재로그인 하도록 prompt 강제
+                        msalInstance.loginRedirect({ ...loginRequest, prompt: "select_account" });
+                    }
+                    return; // 팝업 모드에서는 웹챗을 그리지 않고 여기서 종료
+                }
+                
+                // 2. Iframe (슬라이드 창) 모드일 경우 처리 로직
+                const loggedIn = await tryAutoLogin();
+                if (loggedIn) {
+                    localStorage.setItem("PantosChatbot_LoggedIn_" + loginHint, "true");
+                    await renderChatWidget();
+                } else {
+                    // 인증 실패 시 부모 창에 팝업을 띄우라고 유도하기 위해 설정 삭제
+                    localStorage.removeItem("PantosChatbot_LoggedIn_" + loginHint);
+                    
+                    if (window.parent) {
+                        window.parent.postMessage({ type: "CHATBOT_AUTH_FAILED" }, "*");
+                    }
+
+                    // 오버레이 형태의 친절한 실패 UI 표시
+                    document.getElementById("chatwindow").style.display = "none";
+                    document.getElementById("auth-overlay").style.display = "flex";
+                    const btn = document.getElementById("overlay-btn");
+                    if (btn) btn.style.display = "inline-block";
+                }
+            } catch (e) {
+                updateLoginStatus("초기화 에러: " + e.message, true);
+            }
         })();
     </script>
 </body>
-
 </html>
